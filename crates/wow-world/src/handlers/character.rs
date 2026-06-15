@@ -10357,10 +10357,20 @@ impl WorldSession {
         });
 
         // 16. InitializeFactions (1000 factions, all neutral)
-        let initialize_factions = self
-            .reputation_mgr_like_cpp_mut()
-            .initialize_factions_packet_like_cpp();
-        self.send_packet(&initialize_factions);
+        // NOTE: Do NOT store this in a named local.  InitializeFactions is
+        // 7,000 B (three 1000-element arrays).  A named binding forces the
+        // compiler (especially in debug builds) to keep the full struct live
+        // on the stack frame, which — combined with the large by-value
+        // parameters already in this frame — can push the tokio worker thread
+        // past its stack limit.  Calling inline lets the compiler use a
+        // temporary that it can place in the argument slot without a separate
+        // named slot on the frame.
+        {
+            let factions = self
+                .reputation_mgr_like_cpp_mut()
+                .initialize_factions_packet_like_cpp();
+            self.send_packet(&factions);
+        }
 
         // 17. SetupCurrency (empty)
         self.send_packet(&SetupCurrency::empty());

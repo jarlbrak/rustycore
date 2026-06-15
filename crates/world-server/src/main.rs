@@ -597,8 +597,26 @@ impl AccountLookup for DbAccountLookup {
 
 // ── Main ─────────────────────────────────────────────────────────
 
-#[tokio::main]
-async fn main() -> Result<ExitCode> {
+// Tokio entry-point with an enlarged per-worker stack.
+//
+// The default tokio multi-thread worker stack is 2 MB.  The login sequence
+// for a freshly-created character builds up significant synchronous stack
+// depth: `send_login_sequence` alone carries large by-value parameters
+// (inv_slots[2256 B], action_buttons[1440 B]) plus a 7,000 B
+// `InitializeFactions` local, and it calls several more functions before
+// returning.  In debug builds the compiler does not reclaim stack space
+// within a scope, so these frames accumulate instead of overlapping.
+// 8 MB gives headroom for the current worst-case path and any future growth.
+fn main() -> Result<ExitCode> {
+    tokio::runtime::Builder::new_multi_thread()
+        .thread_stack_size(8 * 1024 * 1024) // 8 MiB (default is 2 MiB)
+        .enable_all()
+        .build()
+        .context("failed to build tokio runtime")?
+        .block_on(async_main())
+}
+
+async fn async_main() -> Result<ExitCode> {
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(
