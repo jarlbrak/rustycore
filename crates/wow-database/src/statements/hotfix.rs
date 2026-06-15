@@ -344,6 +344,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires C++ TrinityCore source at /home/server/woltk-trinity-legacy — not available outside the Linux dev environment"]
     fn generated_max_id_statements_cover_cpp_hotfix_tables() {
         let tables = cpp_max_id_tables();
         assert_eq!(tables.len(), 325);
@@ -358,6 +359,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires C++ TrinityCore source at /home/server/woltk-trinity-legacy — not available outside the Linux dev environment"]
     fn generated_base_statements_cover_cpp_hotfix_tables() {
         let statements = cpp_base_sql();
         assert_eq!(statements.len(), 325);
@@ -370,6 +372,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires C++ TrinityCore source at /home/server/woltk-trinity-legacy — not available outside the Linux dev environment"]
     fn generated_locale_statements_cover_cpp_hotfix_tables() {
         let statements = cpp_locale_sql();
         assert_eq!(statements.len(), 95);

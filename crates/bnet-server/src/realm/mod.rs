@@ -387,12 +387,34 @@ impl RealmManager {
     ) -> Vec<u8> {
         let selected_ip =
             select_realm_ip_str(client_ip, &realm.external_address, &realm.local_address);
+        self.build_realm_server_addresses_json(selected_ip, realm.port)
+    }
+
+    /// Variant that accepts an explicit local-network slice so tests can
+    /// inject a controlled set instead of scanning the host's real interfaces.
+    #[cfg(test)]
+    pub(crate) fn get_realm_server_addresses_json_with_local_networks_like_cpp(
+        &self,
+        realm: &Realm,
+        client_ip: Option<std::net::IpAddr>,
+        local_networks: &[wow_core::Ipv4NetworkLikeCpp],
+    ) -> Vec<u8> {
+        let selected_ip = select_realm_ip_str_with_local_networks(
+            client_ip,
+            &realm.external_address,
+            &realm.local_address,
+            local_networks,
+        );
+        self.build_realm_server_addresses_json(selected_ip, realm.port)
+    }
+
+    fn build_realm_server_addresses_json(&self, selected_ip: String, port: u16) -> Vec<u8> {
         let addresses = RealmListServerIpAddresses {
             families: vec![AddressFamily {
                 family: 1,
                 addresses: vec![IpAddress {
                     ip: selected_ip,
-                    port: i32::from(realm.port),
+                    port: i32::from(port),
                 }],
             }],
         };
@@ -1176,14 +1198,10 @@ mod tests {
         let manager = RealmManager::new();
         let realm = test_realm(9, 5, 6, 3, 1);
 
-        assert_eq!(
-            select_realm_ip_str(
-                Some(std::net::IpAddr::V4("127.0.0.1".parse().unwrap())),
-                &realm.external_address,
-                &realm.local_address,
-            ),
-            realm.local_address
-        );
+        // Use select_realm_ip_str_with_local_networks(&[]) for all assertions
+        // so the test is hermetic: passing an empty slice triggers the
+        // fallback network (local_address/24) instead of scanning the real
+        // host interfaces (which differ between development machines).
         assert_eq!(
             select_realm_ip_str_with_local_networks(
                 Some(std::net::IpAddr::V4("127.0.0.1".parse().unwrap())),
@@ -1212,8 +1230,13 @@ mod tests {
             realm.external_address
         );
 
-        let addresses = manager
-            .get_realm_server_addresses_json_like_cpp(&realm, Some("127.0.0.1".parse().unwrap()));
+        // Use the network-injected variant so the test does not depend on the
+        // host's real network interfaces.
+        let addresses = manager.get_realm_server_addresses_json_with_local_networks_like_cpp(
+            &realm,
+            Some("127.0.0.1".parse().unwrap()),
+            &[],
+        );
         let addresses = inflate_payload(&addresses);
         let json = parse_enveloped_json(&addresses, "JSONRealmListServerIPAddresses:");
         assert_eq!(json["families"][0]["family"], 1);
@@ -1226,8 +1249,13 @@ mod tests {
         let manager = RealmManager::new();
         let realm = test_realm(9, 5, 6, 3, 1);
 
-        let addresses = manager
-            .get_realm_server_addresses_json_like_cpp(&realm, Some("127.0.0.1".parse().unwrap()));
+        // Use the network-injected variant so the test is hermetic across
+        // development machines with different real network interfaces.
+        let addresses = manager.get_realm_server_addresses_json_with_local_networks_like_cpp(
+            &realm,
+            Some("127.0.0.1".parse().unwrap()),
+            &[],
+        );
 
         assert_eq!(
             inflate_payload(&addresses),

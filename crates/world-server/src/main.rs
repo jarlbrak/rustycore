@@ -12898,7 +12898,7 @@ mod tests {
 
     #[test]
     fn world_update_loop_direct_configs_match_cpp_defaults_and_keys() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let root = unique_temp_dir("world_update_loop_direct_configs");
         let config = root.join("worldserver.conf");
 
@@ -12926,18 +12926,22 @@ mod tests {
 
     #[test]
     fn world_config_resolution_prefers_lowercase_cpp_name() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let root = unique_temp_dir("world_config_resolution");
-        let lower = root.join("worldserver.conf");
-        let legacy = root.join("WorldServer.conf");
+        // Use names that differ beyond ASCII case so the test is hermetic on
+        // both case-sensitive (Linux) and case-insensitive (macOS HFS+)
+        // filesystems.  Contract: load_world_config_from picks the first
+        // readable candidate (index 0) over any subsequent fallback.
+        let preferred = root.join("worldserver-preferred.conf");
+        let fallback = root.join("worldserver-fallback.conf");
 
-        fs::write(&lower, "WorldServerPort = 8085\n").expect("write lower failed");
-        fs::write(&legacy, "WorldServerPort = 9000\n").expect("write legacy failed");
+        fs::write(&preferred, "WorldServerPort = 8085\n").expect("write preferred failed");
+        fs::write(&fallback, "WorldServerPort = 9000\n").expect("write fallback failed");
 
         let report = load_world_config_from(
             &[
-                lower.to_str().expect("utf8 path"),
-                legacy.to_str().expect("utf8 path"),
+                preferred.to_str().expect("utf8 path"),
+                fallback.to_str().expect("utf8 path"),
             ],
             root.join("worldserver.conf.d").to_str().expect("utf8 path"),
         )
@@ -12951,7 +12955,7 @@ mod tests {
 
     #[test]
     fn world_config_cli_config_uses_exact_file_like_cpp() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let root = unique_temp_dir("world_config_cli_exact");
         let default_file = root.join("worldserver.conf");
         let override_file = root.join("custom-world.conf");
@@ -12984,7 +12988,7 @@ mod tests {
 
     #[test]
     fn world_network_config_uses_resolved_world_configs() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str(
             r#"
 WorldServerPort = 70000
@@ -13005,7 +13009,7 @@ Expansion = 9
 
     #[test]
     fn realm_id_config_is_required_and_non_zero_like_cpp() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str("").expect("config should load");
         let missing = realm_id_like_cpp().expect_err("missing RealmID must fail");
         assert!(
@@ -13027,7 +13031,7 @@ Expansion = 9
 
     #[test]
     fn db_keepalive_config_and_pool_scope_match_cpp() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         wow_config::load_config_from_str("").expect("config should load");
         let configs = wow_config::load_world_config_values();
@@ -13103,7 +13107,7 @@ Expansion = 9
 
     #[test]
     fn database_pool_size_uses_cpp_worker_and_synch_thread_keys() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         wow_config::load_config_from_str("").expect("config should load");
         assert_eq!(database_pool_size_like_cpp("Login"), 2);
@@ -13128,7 +13132,7 @@ WorldDatabase.SynchThreads = 33
 
     #[test]
     fn updates_auto_setup_defaults_enabled_like_cpp() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         wow_config::load_config_from_str("").expect("config should load");
         assert!(updates_auto_setup_enabled_like_cpp());
@@ -13146,7 +13150,7 @@ WorldDatabase.SynchThreads = 33
 
     #[test]
     fn updates_enable_databases_mask_matches_cpp() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         wow_config::load_config_from_str("").expect("config should load");
         assert_eq!(updates_database_mask_like_cpp(), DATABASE_MASK_ALL_LIKE_CPP);
@@ -13221,7 +13225,7 @@ WorldDatabase.SynchThreads = 33
 
     #[test]
     fn legacy_creature_global_runtime_config_is_numeric_opt_in_like_cpp() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         wow_config::load_config_from_str("").expect("config should load");
         assert!(!legacy_creature_global_runtime_enabled_from_config_like_cpp());
@@ -13237,7 +13241,7 @@ WorldDatabase.SynchThreads = 33
 
     #[test]
     fn legacy_creature_aggro_config_uses_cpp_no_gray_aggro_keys_like_cpp() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         wow_config::load_config_from_str(
             r#"
@@ -13272,7 +13276,7 @@ Visibility.Distance.Arenas = 150
 
     #[test]
     fn loot_drop_rates_use_cpp_world_config_keys() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str(
             r#"
 Rate.Drop.Item.Poor = 0.5
@@ -13298,7 +13302,7 @@ Rate.Corpse.Decay.Looted = 0.25
 
     #[test]
     fn reputation_rates_use_cpp_world_config_keys() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str(
             r#"
 Rate.Reputation.Gain = 2
@@ -13321,7 +13325,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn repair_cost_rate_uses_cpp_world_config_key_and_clamps_negative_like_cpp() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str("Rate.RepairCost = 2.5\n").expect("config should load");
 
         let configs = wow_config::load_world_config_values();
@@ -13334,7 +13338,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn enable_ae_loot_uses_cpp_world_config_key() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str("EnableAELoot = 1\n").expect("config should load");
 
         let configs = wow_config::load_world_config_values();
@@ -13343,7 +13347,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn addon_channel_uses_cpp_world_config_key() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str("AddonChannel = 0\n").expect("config should load");
 
         let configs = wow_config::load_world_config_values();
@@ -13352,7 +13356,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn chat_fake_message_preventing_uses_cpp_world_config_key() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str("ChatFakeMessagePreventing = 1\n")
             .expect("config should load");
 
@@ -13366,7 +13370,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn party_raid_warnings_uses_cpp_world_config_key() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str("PartyRaidWarnings = 1\n").expect("config should load");
 
         let configs = wow_config::load_world_config_values();
@@ -13379,7 +13383,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn chat_strict_link_checking_kick_uses_cpp_world_config_key() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str("ChatStrictLinkChecking.Kick = 1\n")
             .expect("config should load");
 
@@ -13392,7 +13396,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn chat_level_requirements_use_cpp_world_config_keys() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str(
             "ChatLevelReq.Channel = 2\n\
              ChatLevelReq.Whisper = 3\n\
@@ -13424,7 +13428,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn chat_flood_config_uses_cpp_world_config_keys() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str(
             "ChatFlood.MessageCount = 2\n\
              ChatFlood.MessageDelay = 3\n\
@@ -13459,7 +13463,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn max_overspeed_pings_reads_cpp_world_config_key() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str("MaxOverspeedPings = 7\n").expect("config should load");
 
         let configs = wow_config::load_world_config_values();
@@ -13471,7 +13475,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn socket_timeouts_read_cpp_world_config_keys_as_seconds() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str(
             "SocketTimeOutTime = 120000\nSocketTimeOutTimeActive = 45000\n",
         )
@@ -13502,7 +13506,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn packet_spoof_config_reads_cpp_world_config_keys() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str(
             "PacketSpoof.Policy = 2\nPacketSpoof.BanMode = 2\nPacketSpoof.BanDuration = 12345\n",
         )
@@ -13531,7 +13535,7 @@ MaxRecruitAFriendBonusDistance = 45
 
     #[test]
     fn mmap_runtime_config_uses_cpp_world_config_key_and_data_dir() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str(
             r#"
 DataDir = "/srv/wow-data"
@@ -13550,7 +13554,7 @@ mmap.enablePathFinding = 0
 
     #[test]
     fn mmap_runtime_config_applies_cpp_disable_mgr_map_gate() {
-        let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         wow_config::load_config_from_str("mmap.enablePathFinding = 1\n")
             .expect("config should load");
 

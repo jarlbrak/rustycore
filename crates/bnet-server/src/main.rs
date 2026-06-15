@@ -767,6 +767,12 @@ mod tests {
     use std::sync::Mutex;
 
     static CONFIG_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn config_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        // Recover from poison so a panicking test does not cascade to all
+        // subsequent tests that share the config singleton.
+        CONFIG_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
     const ENCRYPTED_PKCS8_TEST_KEY: &str = r#"-----BEGIN ENCRYPTED PRIVATE KEY-----
 MIIC3TBXBgkqhkiG9w0BBQ0wSjApBgkqhkiG9w0BBQwwHAQIUyBCum5/y54CAggA
 MAwGCCqGSIb3DQIJBQAwHQYJYIZIAWUDBAEqBBC/XmvFo8zjwfieHYC70YDrBIIC
@@ -788,15 +794,19 @@ DkpzLQyZJUrrBCu3ErEKKgJDB4zUoeA2Zx1QI0NffLwF4O0C+2jtVROs887b0kTx
 
     #[test]
     fn bnet_config_resolution_prefers_lowercase_cpp_name() {
-        let _guard = CONFIG_TEST_LOCK.lock().expect("config test lock poisoned");
+        let _guard = config_test_lock();
         let root = unique_temp_dir("bnet_config_resolution");
-        let lower = root.join("bnetserver.conf");
-        let legacy = root.join("BNetServer.conf");
+        // Use names that differ beyond ASCII case so the test is hermetic on
+        // both case-sensitive (Linux) and case-insensitive (macOS HFS+)
+        // filesystems.  Contract: load_bnet_config_from picks the preferred
+        // (index 0) candidate when it exists over the fallback (index 1).
+        let preferred = root.join("bnetserver-preferred.conf");
+        let fallback = root.join("bnetserver-fallback.conf");
 
-        fs::write(&lower, "BattlenetPort = 1119\n").expect("write lower failed");
-        fs::write(&legacy, "BattlenetPort = 2222\n").expect("write legacy failed");
+        fs::write(&preferred, "BattlenetPort = 1119\n").expect("write preferred failed");
+        fs::write(&fallback, "BattlenetPort = 2222\n").expect("write fallback failed");
 
-        let report = load_bnet_config_from(&lower, &root.join("bnetserver.conf.d"))
+        let report = load_bnet_config_from(&preferred, &root.join("bnetserver.conf.d"))
             .expect("config should load");
 
         assert_eq!(report.candidate_index, 0);
@@ -842,7 +852,7 @@ MAoCAQAwBQYDK2Vw
 
     #[test]
     fn bnet_config_loads_cpp_section_and_tls_paths_like_cpp() {
-        let _guard = CONFIG_TEST_LOCK.lock().expect("config test lock poisoned");
+        let _guard = config_test_lock();
         let root = unique_temp_dir("bnet_config_cpp_section");
         let lower = root.join("bnetserver.conf");
 
@@ -885,7 +895,7 @@ LoginDatabaseInfo = "127.0.0.1;3306;trinity;trinity;auth"
 
     #[test]
     fn bnet_config_resolution_uses_dist_fallback_for_explicit_config_like_cpp() {
-        let _guard = CONFIG_TEST_LOCK.lock().expect("config test lock poisoned");
+        let _guard = config_test_lock();
         let root = unique_temp_dir("bnet_config_dist_fallback");
         let config = root.join("custom-bnet.conf");
         let dist = root.join("custom-bnet.conf.dist");

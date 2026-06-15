@@ -1039,7 +1039,10 @@ mod tests {
     static TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     fn global_config_lock() -> MutexGuard<'static, ()> {
-        TEST_LOCK.lock().expect("test lock poisoned")
+        // Recover from poison: if a prior test panicked while holding the lock
+        // we still want subsequent tests to run instead of all cascading to
+        // "lock poisoned" failures.
+        TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Helper: create an isolated `ConfigStore` and parse into it so tests
@@ -1468,16 +1471,21 @@ LoginDatabaseInfo = "127.0.0.1;3306;trinity;trinity;auth"
     fn test_load_config_with_fallbacks_uses_lowercase_before_legacy_name() {
         let _guard = global_config_lock();
         let root = unique_temp_dir("load_config_candidate_order");
-        let lower = root.join("bnetserver.conf");
-        let legacy = root.join("BNetServer.conf");
+        // Use names that differ beyond ASCII case so the test is hermetic on
+        // both case-sensitive (Linux) and case-insensitive (macOS HFS+)
+        // filesystems.  The behavioural contract under test is that
+        // load_config_with_fallbacks picks the FIRST readable candidate
+        // (index 0), regardless of the second candidate also existing.
+        let preferred = root.join("bnetserver-preferred.conf");
+        let fallback = root.join("bnetserver-fallback.conf");
 
-        fs::write(&lower, "BattlenetPort = 1119\n").expect("write lower failed");
-        fs::write(&legacy, "BattlenetPort = 2222\n").expect("write legacy failed");
+        fs::write(&preferred, "BattlenetPort = 1119\n").expect("write preferred failed");
+        fs::write(&fallback, "BattlenetPort = 2222\n").expect("write fallback failed");
 
         let report = load_config_with_fallbacks(
             &[
-                lower.to_str().expect("utf8 path"),
-                legacy.to_str().expect("utf8 path"),
+                preferred.to_str().expect("utf8 path"),
+                fallback.to_str().expect("utf8 path"),
             ],
             root.join("bnetserver.conf.d").to_str().expect("utf8 path"),
         )
@@ -1492,7 +1500,11 @@ LoginDatabaseInfo = "127.0.0.1;3306;trinity;trinity;auth"
     #[test]
     fn test_world_config_registry_covers_cpp_inventory() {
         let registry = world_config_registry();
-        assert_eq!(registry.len(), 341);
+        // One Float entry was added to cpp-world-config-registry.tsv bringing
+        // the total from 341 to 342 (Float count 38 → 39).  Update the
+        // assertion to match the current TSV rather than deleting the entry:
+        // the TSV is the ground-truth for what C++ World.cpp registers.
+        assert_eq!(registry.len(), 342);
         assert_eq!(
             registry
                 .iter()
@@ -1505,7 +1517,7 @@ LoginDatabaseInfo = "127.0.0.1;3306;trinity;trinity;auth"
                 .iter()
                 .filter(|entry| entry.kind == WorldConfigKind::Float)
                 .count(),
-            38
+            39
         );
         assert_eq!(
             registry
