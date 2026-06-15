@@ -1697,6 +1697,15 @@ impl WorldCreature {
 
         let finalized = spline.finalized();
         if finalized {
+            // C++ MoveSpline::_updateState moves the unit to the final point
+            // before the DONE flag terminates the loop.  When a spline is
+            // pre-finalized (e.g. in tests or after a server-side stop) we must
+            // still relocate the creature to the destination so that any
+            // subsequent movement (e.g. RandomMovementGenerator wander) uses
+            // the correct reference position.
+            if let Some(dst) = spline.final_destination() {
+                self.creature.set_ai_position(dst);
+            }
             self.creature
                 .unit_mut()
                 .subsystems_mut()

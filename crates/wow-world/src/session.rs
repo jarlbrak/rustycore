@@ -12084,7 +12084,13 @@ impl WorldSession {
             | ClientOpcodes::MoveForceFlightBackSpeedChangeAck
             | ClientOpcodes::MoveForceWalkSpeedChangeAck
             | ClientOpcodes::MoveForceTurnRateChangeAck
-            | ClientOpcodes::MoveForcePitchRateChangeAck => 0,
+            | ClientOpcodes::MoveForcePitchRateChangeAck
+            // ObjectUpdateFailed / ObjectUpdateRescued are client responses to
+            // server-sent object update blocks; C++ puts them in the 0-cost
+            // (no AntiDOS limit) group because they are triggered by server
+            // actions and the client cannot meaningfully spam them.
+            | ClientOpcodes::ObjectUpdateFailed
+            | ClientOpcodes::ObjectUpdateRescued => 0,
 
             ClientOpcodes::QuestGiverAcceptQuest
             | ClientOpcodes::QuestLogRemoveQuest
@@ -23250,10 +23256,12 @@ impl WorldSession {
         attacker_guid: ObjectGuid,
         creature_guid: ObjectGuid,
     ) -> Option<wow_entities::UnitValuesUpdate> {
-        let lootable = self
-            .loot_table
-            .get(&creature_guid)
-            .is_some_and(|loot| loot.coins > 0 || loot.unlooted_count > 0);
+        // C++ sets UNIT_DYNFLAG_LOOTABLE for every creature that has a loot
+        // recipient (i.e. was tapped), regardless of whether the generated
+        // loot is empty.  The Rust analogue is: the creature has an entry in
+        // loot_table (ensure_represented_creature_kill_loot_like_cpp always
+        // inserts one for tapped creatures), so we check presence, not content.
+        let lootable = self.loot_table.contains_key(&creature_guid);
         let can_skin = self.represented_creature_can_skin_after_death_state_like_cpp(creature_guid);
         let values_update = self.mutate_world_creature(creature_guid, |creature| {
             creature.complete_death_state_after_kill_hooks_like_cpp();
