@@ -24009,6 +24009,8 @@ mod tests {
                         disables_gravity: false,
                         passenger_not_selectable: false,
                         keep_pet: false,
+                        can_switch_from_seat: false,
+                        ejectable: false,
                     },
                     VehicleSeatAddon::default(),
                 )]),
