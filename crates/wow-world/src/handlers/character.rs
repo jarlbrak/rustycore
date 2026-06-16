@@ -10331,7 +10331,7 @@ impl WorldSession {
         // 10. SendKnownSpells — populated from character_spell table
         info!("Sending {} known spells for {:?}", known_spells.len(), guid);
         self.send_packet(&SendKnownSpells {
-            initial_login: true,
+            initial_login: false,
             known_spells,
             favorite_spells: Vec::new(),
         });
@@ -10406,8 +10406,12 @@ impl WorldSession {
         // 25. AccountHeirloomUpdate
         self.send_account_heirlooms_like_cpp();
 
-        // 26. AccountTransmogUpdate favorite appearances
-        self.send_favorite_appearances_like_cpp();
+        // 26. AccountTransmogUpdate — SKIPPED.
+        // The 3.4.3 (build 54261) wire opcode for SMSG_ACCOUNT_TRANSMOG_UPDATE is unknown.
+        // TC wotlk_classic declares it as 0x3C004C (internal 32-bit), which has no confirmed
+        // 16-bit wire encoding. HermesProxy PacketsLog captures do not include this packet.
+        // Sending it with the 0xBADD placeholder caused fatal client crashes.
+        // self.send_favorite_appearances_like_cpp(); // disabled until real opcode is found
 
         // 27. InitialSetup (expansion level)
         self.send_packet(&InitialSetup::wotlk());
@@ -10416,7 +10420,15 @@ impl WorldSession {
         //      controls for movement. Without this, `m_mover` is null and the
         //      client crashes with ACCESS_VIOLATION when processing movement.
         //      C# sends via SetMovedUnit(this) at Player.cs line 5610.
-        self.send_packet(&MoveSetActiveMover { mover_guid: guid });
+        //
+        // NOTE(2026-06-15): 0x2DD5 MoveSetActiveMover disabled — HermesProxy never
+        // sends this opcode in 7123 captured packets for build 54261. RC's
+        // implementation sends only 5 bytes (packed GUID) instead of the full
+        // MovementInfo block the client parser expects (~50 bytes). This caused
+        // "reader got EOF" crash ~4s after world entry. HP uses UpdateObject to
+        // establish the active mover implicitly. Re-enable only if full
+        // MovementInfo serialisation is implemented.
+        // self.send_packet(&MoveSetActiveMover { mover_guid: guid });
 
         // ── Phase 3: AddToMap → UpdateObject ──
 

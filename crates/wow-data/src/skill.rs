@@ -319,14 +319,13 @@ impl SkillStore {
             };
 
             for ability in abilities {
-                // For class-exclusive skills (Priest, Holy, Shadow, etc.): grant all ranks
-                // including trainer-learned (acquire_method=0). A level 80 character should
-                // have all ranks of their class spells.
-                // For non-class skills (racials, languages, etc.): only auto-learned (1 or 2).
-                if !is_this_class_skill
-                    && ability.acquire_method != 1
-                    && ability.acquire_method != 2
-                {
+                // Only grant auto-learned spells (acquire_method 1 = OnSkillValue,
+                // 2 = OnSkillLearn). Trainer-learned spells (acquire_method 0 = None)
+                // must come from the character_spell DB table, not DBC auto-grant.
+                // This applies equally to class skills and non-class skills — a new
+                // character should only receive rank-1 starting abilities, not all
+                // trainer ranks (which caused 351 warrior spells vs HP's 45).
+                if ability.acquire_method != 1 && ability.acquire_method != 2 {
                     continue;
                 }
 

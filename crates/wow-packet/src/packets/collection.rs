@@ -95,14 +95,18 @@ impl TransmogrifyItems {
     }
 }
 
-// ── AccountTransmogUpdate (SMSG 0xBADD placeholder) ───────────────
+// ── AccountTransmogUpdate (SMSG opcode unknown in 3.4.3 wire format) ───────────────
 
 /// C++ `WorldPackets::Transmogrification::AccountTransmogUpdate`.
 ///
-/// The archived C++ opcode table uses the `0xBADD` placeholder for
-/// `SMSG_ACCOUNT_TRANSMOG_UPDATE`. Rust already represents that placeholder as
-/// `ServerOpcodes::UpdateCapturePoint`, so this packet keeps a distinct type while
-/// sharing the numeric placeholder.
+/// TC wotlk_classic internal opcode is 0x3C004C, which has no confirmed 16-bit
+/// wire representation for build 54261. HermesProxy PacketsLog captures do NOT
+/// include this packet in the login sequence. The previous placeholder (0xBADD)
+/// caused fatal client crashes.
+///
+/// **DO NOT send this packet during login** — call `send_favorite_appearances_like_cpp`
+/// is suppressed at the session level until the real wire opcode is identified.
+/// The struct is preserved for future use.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountTransmogUpdate {
     pub is_full_update: bool,

@@ -24,19 +24,19 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bytes::BytesMut;
-use num_traits::ToPrimitive;
+
 use rand::Rng;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::{debug, error, info, trace, warn};
 
-use wow_constants::{ClientOpcodes, ServerOpcodes};
+use wow_constants::ClientOpcodes;
 use wow_core::IpLocationStore;
 use wow_crypto::{HmacSha256, SessionKeyGenerator256, WorldCrypt};
 use wow_packet::header::{HEADER_SIZE, PacketHeader, TAG_SIZE};
 use wow_packet::packets::auth::{AuthChallenge, AuthSession, EnterEncryptedMode, Ping, Pong};
-use wow_packet::{ClientPacket, ServerPacket, WorldPacket, compression};
+use wow_packet::{ClientPacket, ServerPacket, WorldPacket};
 
 // ── Protocol constants ────────────────────────────────────────────
 
@@ -603,24 +603,13 @@ impl WorldSocket {
             None => return self.send_unencrypted_packet(pkt).await,
         };
 
-        let mut data = pkt.to_bytes();
-        let opcode_raw = if data.len() >= 2 {
-            u16::from_le_bytes([data[0], data[1]])
-        } else {
-            0
-        };
+        let data = pkt.to_bytes();
 
-        // Compress if above threshold
-        if data.len() > compression::COMPRESSION_THRESHOLD {
-            let opcode_bytes = opcode_raw.to_le_bytes();
-            let compressed = compression::compress_packet(&opcode_bytes, &data[2..]);
-
-            // Replace data with CompressedPacket opcode + compressed payload
-            let comp_opcode = ServerOpcodes::CompressedPacket.to_u16().unwrap_or(0);
-            data = Vec::with_capacity(2 + compressed.len());
-            data.extend_from_slice(&comp_opcode.to_le_bytes());
-            data.extend_from_slice(&compressed);
-        }
+        // NOTE: CompressedPacket (0x3052) is intentionally NOT used here.
+        // HermesProxy (the working reference for build 54261) sends all packets raw —
+        // confirmed across 7 captures (3+ MB): zero CompressedPacket records, including
+        // UpdateObject packets up to 18 KB. The 54261 client crashes when it receives
+        // a CompressedPacket wrapper from the server.
 
         // Encrypt
         let (encrypted, tag) = crypt.encrypt(&data, &[])?;
@@ -882,7 +871,6 @@ impl WorldSocket {
             crypt: WorldCrypt::new_with_server_counter(&encrypt_key, self.unencrypted_packets_sent),
             send_rx,
             addr: self.addr,
-            compressor: compression::PacketCompressor::new(),
         };
 
         info!(
@@ -1022,7 +1010,6 @@ pub struct SocketWriter {
     crypt: WorldCrypt,
     send_rx: flume::Receiver<Vec<u8>>,
     addr: SocketAddr,
-    compressor: compression::PacketCompressor,
 }
 
 impl SocketWriter {
@@ -1045,7 +1032,7 @@ impl SocketWriter {
 
     /// Encrypt a serialized packet and write it to the TCP stream.
     async fn write_encrypted(&mut self, data: &[u8]) -> Result<(), WorldSocketError> {
-        let mut data = data.to_vec();
+        let data = data.to_vec();
 
         // Log the opcode being sent
         let opcode_raw = if data.len() >= 2 {
@@ -1053,17 +1040,20 @@ impl SocketWriter {
         } else {
             0
         };
-        // Log every packet with hex dump for debugging (truncate at 512 bytes).
+
+        // Hex-dump every outgoing packet at debug level (truncate at 65536 bytes for crash diagnosis).
+        // These are the ACTUAL bytes going to the wire — no compression wrapper.
+        // Diffable against HermesProxy PacketsLog captures to diagnose client crashes.
         {
-            let dump_len = data.len().min(512);
+            let dump_len = data.len().min(65536);
             let hex: String = data[..dump_len]
                 .iter()
                 .map(|b| format!("{b:02X}"))
                 .collect::<Vec<_>>()
                 .join(" ");
             let suffix = if data.len() > 512 { "..." } else { "" };
-            trace!(
-                "Writer[{}]: PKT#{} opcode=0x{:04X} len={}\nHEX: {}{suffix}",
+            debug!(
+                "Writer[{}]: PKT#{} opcode=0x{:04X} len={} wire_hex={}{suffix}",
                 self.addr,
                 self.crypt.server_counter(),
                 opcode_raw,
@@ -1072,26 +1062,10 @@ impl SocketWriter {
             );
         }
 
-        // Compress if above threshold (uses persistent compressor per socket)
-        if data.len() > compression::COMPRESSION_THRESHOLD {
-            let original_len = data.len();
-            let opcode_bytes = opcode_raw.to_le_bytes();
-            let compressed = self.compressor.compress_packet(&opcode_bytes, &data[2..]);
-
-            let comp_opcode = ServerOpcodes::CompressedPacket.to_u16().unwrap_or(0);
-            data = Vec::with_capacity(2 + compressed.len());
-            data.extend_from_slice(&comp_opcode.to_le_bytes());
-            data.extend_from_slice(&compressed);
-
-            info!(
-                "Writer[{}]: Compressed 0x{:04X} {} → {} bytes (CompressedPacket 0x{:04X})",
-                self.addr,
-                opcode_raw,
-                original_len,
-                data.len(),
-                comp_opcode
-            );
-        }
+        // NOTE: CompressedPacket (0x3052) is intentionally NOT used here.
+        // Build 54261 client crashes on server-sent compressed packets.
+        // HermesProxy (the confirmed-working reference) never uses CompressedPacket.
+        // Packets are sent raw regardless of size.
 
         // Encrypt
         let (encrypted, tag) = self.crypt.encrypt(&data, &[])?;

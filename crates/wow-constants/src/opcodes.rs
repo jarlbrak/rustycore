@@ -691,6 +691,7 @@ pub enum ServerOpcodes {
     AccountMountRemoved = 0x25af,
     AccountMountUpdate = 0x25ae,
     AccountNotificationsResponse = 0x2883,
+    AccountHeirloomUpdate = 0x25b1,
     AccountToyUpdate = 0x25b0,
     AchievementDeleted = 0x26e8,
     AchievementEarned = 0x2643,

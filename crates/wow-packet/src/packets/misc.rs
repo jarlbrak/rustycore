@@ -2977,7 +2977,7 @@ impl ServerPacket for SpecialMountAnim {
     }
 }
 
-// ── AccountHeirloomUpdate (SMSG 0xBADD placeholder) ─────────────────
+// ── AccountHeirloomUpdate (SMSG 0x25B1) ─────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AccountHeirloom {
@@ -2987,9 +2987,10 @@ pub struct AccountHeirloom {
 
 /// C++ `WorldPackets::Misc::AccountHeirloomUpdate`.
 ///
-/// The archived C++ opcode table uses the shared `0xBADD` placeholder for this
-/// packet, so Rust reuses the existing `UpdateCapturePoint` discriminant while
-/// keeping a distinct packet type.
+/// Wire opcode confirmed from HermesProxy PacketsLog capture: 0x25B1
+/// (= AccountToyUpdate + 1, per TC wotlk_classic Opcodes.h comment
+/// "SMSG_ACCOUNT_HEIRLOOM_UPDATE = SMSG_ACCOUNT_TOY_UPDATE + 1").
+/// Previous placeholder (0xBADD) caused fatal client crash.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountHeirloomUpdate {
     pub is_full_update: bool,
@@ -3008,7 +3009,7 @@ impl AccountHeirloomUpdate {
 }
 
 impl ServerPacket for AccountHeirloomUpdate {
-    const OPCODE: ServerOpcodes = ServerOpcodes::UpdateCapturePoint;
+    const OPCODE: ServerOpcodes = ServerOpcodes::AccountHeirloomUpdate;
 
     fn write(&self, pkt: &mut WorldPacket) {
         pkt.write_bit(self.is_full_update);
@@ -8123,9 +8124,11 @@ mod tests {
         ]);
         let bytes = pkt.to_bytes();
 
+        // Opcode must be AccountHeirloomUpdate (0x25B1), NOT the old 0xBADD placeholder.
+        // Confirmed from HermesProxy PacketsLog: build 54261 sends 0x25B1 for this packet.
         assert_eq!(
             u16::from_le_bytes([bytes[0], bytes[1]]),
-            ServerOpcodes::UpdateCapturePoint as u16
+            ServerOpcodes::AccountHeirloomUpdate as u16
         );
         assert_eq!(bytes[2], 0x80);
         assert_eq!(
