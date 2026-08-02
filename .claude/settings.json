@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "ninum-knowledge": {
+      "type": "stdio",
+      "command": "/Users/tbrack/Documents/Projects/Agents/.venv/bin/python",
+      "args": ["-m", "backend.mcp_server"],
+      "cwd": "/Users/tbrack/Documents/Projects/Agents",
+      "env": {
+        "PYTHONPATH": "/Users/tbrack/Documents/Projects/Agents",
+        "DATA_DIR": "/Users/tbrack/Documents/Projects/Agents/data",
+        "NINUM_DB_PATH": "/Users/tbrack/Documents/Projects/Agents/data/ninum.db",
+        "ANNAS_ARCHIVE_API_KEY": "${ANNAS_ARCHIVE_API_KEY}"
+      }
+    }
+  }
+}
