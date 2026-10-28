@@ -10,6 +10,11 @@ on:
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
+    inputs:
+      studio_validation:
+        description: Validate the native ARM target in a disposable Linux VM
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,7 +30,7 @@ env:
 jobs:
   fmt:
     name: Format
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.studio_validation && github.repository == 'jarlbrak/rustycore') && fromJSON('["self-hosted","ARM64","studio-services"]') || 'ubuntu-24.04' }}
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -50,7 +55,7 @@ jobs:
 
   check:
     name: Check core crates
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.studio_validation && github.repository == 'jarlbrak/rustycore') && fromJSON('["self-hosted","ARM64","studio-services"]') || 'ubuntu-24.04' }}
     timeout-minutes: 20
     env:
       CARGO_INCREMENTAL: "0"
@@ -67,14 +72,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install protoc
-        run: |
-          protoc_version="$(tr -d '[:space:]' < .protoc-version)"
-          curl --fail --show-error --location --retry 3 --retry-all-errors \
-            -o /tmp/protoc.zip \
-            "https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_version}/protoc-${protoc_version}-linux-x86_64.zip"
-          python3 -m zipfile -e /tmp/protoc.zip "$HOME/.local"
-          chmod +x "$HOME/.local/bin/protoc"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: bash tools/ci/install-protoc.sh
 
       - name: Check architecture boundaries
         run: |
@@ -96,7 +94,7 @@ jobs:
 
   tests:
     name: Focused library tests
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.studio_validation && github.repository == 'jarlbrak/rustycore') && fromJSON('["self-hosted","ARM64","studio-services"]') || 'ubuntu-24.04' }}
     timeout-minutes: 30
     env:
       CARGO_INCREMENTAL: "0"
@@ -111,14 +109,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install protoc
-        run: |
-          protoc_version="$(tr -d '[:space:]' < .protoc-version)"
-          curl --fail --show-error --location --retry 3 --retry-all-errors \
-            -o /tmp/protoc.zip \
-            "https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_version}/protoc-${protoc_version}-linux-x86_64.zip"
-          python3 -m zipfile -e /tmp/protoc.zip "$HOME/.local"
-          chmod +x "$HOME/.local/bin/protoc"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: bash tools/ci/install-protoc.sh
 
       - name: Run focused library and loot-race harness tests
         run: |
@@ -138,7 +129,7 @@ jobs:
   latest-stable:
     name: Latest stable compatibility
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.studio_validation && github.repository == 'jarlbrak/rustycore') && fromJSON('["self-hosted","ARM64","studio-services"]') || 'ubuntu-24.04' }}
     timeout-minutes: 30
     env:
       RUSTUP_TOOLCHAIN: stable
@@ -155,14 +146,7 @@ jobs:
           shared-key: latest-stable
 
       - name: Install protoc
-        run: |
-          protoc_version="$(tr -d '[:space:]' < .protoc-version)"
-          curl --fail --show-error --location --retry 3 --retry-all-errors \
-            -o /tmp/protoc.zip \
-            "https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_version}/protoc-${protoc_version}-linux-x86_64.zip"
-          python3 -m zipfile -e /tmp/protoc.zip "$HOME/.local"
-          chmod +x "$HOME/.local/bin/protoc"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: bash tools/ci/install-protoc.sh
 
       - name: Check and link server binaries on latest stable
         run: |

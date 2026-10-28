@@ -20,6 +20,11 @@ on:
       - "Cargo.lock"
       - "crates/wow-database/**"
   workflow_dispatch:
+    inputs:
+      studio_validation:
+        description: Validate the native ARM target in a disposable Linux VM
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,7 +36,7 @@ concurrency:
 jobs:
   live-db-updater:
     name: DbUpdater populate/update against MariaDB 10.6
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.studio_validation && github.repository == 'jarlbrak/rustycore') && fromJSON('["self-hosted","ARM64","studio-services"]') || 'ubuntu-24.04' }}
     timeout-minutes: 15
 
     services:

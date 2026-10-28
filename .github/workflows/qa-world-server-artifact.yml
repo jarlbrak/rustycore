@@ -1,6 +1,12 @@
 name: QA runtime artifacts
 
 on:
+  workflow_dispatch:
+    inputs:
+      studio_validation:
+        description: Validate the native ARM target in a disposable Linux VM
+        type: boolean
+        default: false
   pull_request:
     branches:
       - "3.4.3"
@@ -14,14 +20,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     name: Build replica ${{ matrix.replica }}
-    if: contains(github.event.pull_request.labels.*.name, 'qa-artifact')
-    runs-on: ubuntu-24.04
+    if: (github.event_name == 'workflow_dispatch' && inputs.studio_validation) || contains(github.event.pull_request.labels.*.name, 'qa-artifact')
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.studio_validation && github.repository == 'jarlbrak/rustycore') && fromJSON('["self-hosted","ARM64","studio-services"]') || 'ubuntu-24.04' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -34,7 +40,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Install Rust
@@ -52,26 +58,7 @@ jobs:
             tools/wow-test-bot -> target
 
       - name: Install protoc
-        run: |
-          protoc_version="$(tr -d '[:space:]' < .protoc-version)"
-          case "$protoc_version" in
-            28.3)
-              # protoc-28.3-linux-x86_64.zip from the official protobuf v28.3 release.
-              protoc_sha256="0ad949f04a6a174da83cdcbdb36dee0a4925272a5b6d83f79a6bf9852076d53f"
-              ;;
-            *)
-              echo "::error::No trusted linux-x86_64 protoc checksum for version ${protoc_version}"
-              exit 1
-              ;;
-          esac
-          curl --fail --show-error --location --retry 3 --retry-all-errors \
-            -o /tmp/protoc.zip \
-            "https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_version}/protoc-${protoc_version}-linux-x86_64.zip"
-          printf '%s  %s\n' "$protoc_sha256" /tmp/protoc.zip | sha256sum --check --strict
-          python3 -m zipfile -e /tmp/protoc.zip "$HOME/.local"
-          chmod +x "$HOME/.local/bin/protoc"
-          test "$("$HOME/.local/bin/protoc" --version)" = "libprotoc ${protoc_version}"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: bash tools/ci/install-protoc.sh
 
       - name: Build no-LTO release artifacts
         env:
@@ -89,7 +76,7 @@ jobs:
 
       - name: Package provenance
         env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           REPLICA: ${{ matrix.replica }}
         run: |
           actual_head="$(git rev-parse HEAD)"
@@ -105,7 +92,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: world-server-qa-${{ matrix.replica }}-${{ github.event.pull_request.head.sha }}
+          name: world-server-qa-${{ matrix.replica }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: qa-artifact/
           if-no-files-found: error
           compression-level: 0
@@ -113,21 +100,21 @@ jobs:
 
   verify:
     name: Verify replica hashes
-    if: contains(github.event.pull_request.labels.*.name, 'qa-artifact')
+    if: (github.event_name == 'workflow_dispatch' && inputs.studio_validation) || contains(github.event.pull_request.labels.*.name, 'qa-artifact')
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.studio_validation && github.repository == 'jarlbrak/rustycore') && fromJSON('["self-hosted","ARM64","studio-services"]') || 'ubuntu-24.04' }}
     timeout-minutes: 5
 
     steps:
       - name: Download replicas
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: world-server-qa-*-${{ github.event.pull_request.head.sha }}
+          pattern: world-server-qa-*-${{ github.event.pull_request.head.sha || github.sha }}
           path: replicas
 
       - name: Require identical artifacts and provenance
         env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           replica_a="replicas/world-server-qa-a-${HEAD_SHA}"
           replica_b="replicas/world-server-qa-b-${HEAD_SHA}"
@@ -149,7 +136,7 @@ jobs:
       - name: Upload verified artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: world-server-qa-verified-${{ github.event.pull_request.head.sha }}
+          name: world-server-qa-verified-${{ github.event.pull_request.head.sha || github.sha }}
           path: verified/
           if-no-files-found: error
           compression-level: 0
