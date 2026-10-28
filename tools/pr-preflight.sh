@@ -708,7 +708,7 @@ def shell_payload(command):
     if not outer:
         return None
     executable = pathlib.Path(outer[0]).name
-    if executable in {"bash", "sh"} and len(outer) >= 3 and outer[1] in {
+    if executable in {"bash", "sh", "zsh"} and len(outer) == 3 and outer[1] in {
         "-c",
         "-lc",
         "-cl",
@@ -774,6 +774,8 @@ run_self_test() {
   local ci_dry_run_output
   local combined_inspection_result
   local committed_inspection_result
+  local review_shell
+  local review_payload
   local dependency
   local expected_protoc_version
   local echo_inspection_result
@@ -919,6 +921,29 @@ run_self_test() {
 
   review_inspection_result "$inspection_result" --uncommitted >/dev/null
   review_inspection_result "$committed_inspection_result" --base deadbeef >/dev/null
+  # macOS Codex command events wrap the exact invocation in /bin/zsh -lc.
+  # Admit only a single exact payload; compound commands and failed events still fail.
+  for review_shell in /bin/bash /bin/sh /bin/zsh; do
+    for review_payload in 'git diff deadbeef..HEAD' \
+      'git diff deadbeef..HEAD && true' 'git diff deadbeef..HEAD | cat' \
+      'git diff deadbeef..HEAD > /tmp/diff' 'echo git diff deadbeef..HEAD'; do
+      python3 - "$artifacts/wrapped-inspection.jsonl" "$review_shell" "$review_payload" <<'PYWRAPPER'
+import json, pathlib, shlex, sys
+command = shlex.join([sys.argv[2], "-lc", sys.argv[3]])
+pathlib.Path(sys.argv[1]).write_text(json.dumps({"type": "item.completed", "item": {
+    "type": "command_execution", "command": command,
+    "status": "completed", "exit_code": 0}}) + "\n")
+PYWRAPPER
+      rc=0
+      review_inspection_result "$artifacts/wrapped-inspection.jsonl" --base deadbeef \
+        >/dev/null 2>&1 || rc=$?
+      if [[ "$review_payload" == 'git diff deadbeef..HEAD' ]]; then
+        [[ "$rc" == 0 ]] || die "exact $review_shell inspection was rejected"
+      else
+        [[ "$rc" == 65 ]] || die "non-exact $review_shell inspection was accepted"
+      fi
+    done
+  done
   rc=0
   review_inspection_result "$no_inspection_result" --uncommitted >/dev/null 2>&1 || rc=$?
   [[ "$rc" == "65" ]] || die "missing inspection self-test returned $rc instead of 65"
